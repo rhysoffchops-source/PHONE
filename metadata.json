@@ -1,0 +1,6 @@
+{
+  "name": "Android Virtual Device Simulator",
+  "description": "An interactive Android Virtual Device (AVD) manager and smartphone virtualization simulator with customizable hardware signatures, root options, SafetyNet testing, and network/app simulations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
