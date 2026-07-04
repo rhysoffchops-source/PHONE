@@ -125,6 +125,100 @@ async function bootstrap() {
     });
   });
 
+  // Twilio eSIM Outbound calling and SMS Carrier Bridge
+  app.get("/api/twilio/status", (req, res) => {
+    const isConfigured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+    res.json({
+      success: true,
+      configured: isConfigured,
+      twilioNumber: process.env.TWILIO_PHONE_NUMBER || null
+    });
+  });
+
+  app.post("/api/twilio/send-sms", async (req, res) => {
+    const { to, body, accountSid, authToken, fromNumber } = req.body;
+    
+    const finalSid = accountSid || process.env.TWILIO_ACCOUNT_SID;
+    const finalToken = authToken || process.env.TWILIO_AUTH_TOKEN;
+    const finalFrom = fromNumber || process.env.TWILIO_PHONE_NUMBER;
+
+    if (!finalSid || !finalToken || !finalFrom) {
+      return res.json({
+        success: false,
+        error: "Twilio API parameters are not configured. To send a real SMS, provide your Twilio credentials in eSIM Carrier Settings or set them in .env"
+      });
+    }
+
+    try {
+      const basicAuth = Buffer.from(`${finalSid}:${finalToken}`).toString("base64");
+      const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${finalSid}/Messages.json`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${basicAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          To: to,
+          From: finalFrom,
+          Body: body
+        }).toString()
+      });
+
+      const data: any = await response.json();
+      if (!response.ok) {
+        return res.json({ success: false, error: data.message || "Twilio API returned an error status." });
+      }
+
+      res.json({ success: true, messageId: data.sid, status: data.status });
+    } catch (err: any) {
+      res.json({ success: false, error: err.message || "Internal network error contacting Twilio." });
+    }
+  });
+
+  app.post("/api/twilio/place-call", async (req, res) => {
+    const { to, accountSid, authToken, fromNumber, voiceResponseUrl } = req.body;
+
+    const finalSid = accountSid || process.env.TWILIO_ACCOUNT_SID;
+    const finalToken = authToken || process.env.TWILIO_AUTH_TOKEN;
+    const finalFrom = fromNumber || process.env.TWILIO_PHONE_NUMBER;
+
+    if (!finalSid || !finalToken || !finalFrom) {
+      return res.json({
+        success: false,
+        error: "Twilio API parameters are not configured. To place a real GSM phone call, provide your Twilio credentials in eSIM Carrier Settings or set them in .env"
+      });
+    }
+
+    try {
+      const basicAuth = Buffer.from(`${finalSid}:${finalToken}`).toString("base64");
+      // Use standard TwiML voice response url, or a pleasant default text-to-speech xml
+      const twimlUrl = voiceResponseUrl || "http://demo.twilio.com/docs/voice.xml";
+
+      const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${finalSid}/Calls.json`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${basicAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          To: to,
+          From: finalFrom,
+          Url: twimlUrl
+        }).toString()
+      });
+
+      const data: any = await response.json();
+      if (!response.ok) {
+        return res.json({ success: false, error: data.message || "Twilio API returned an error status." });
+      }
+
+      res.json({ success: true, callId: data.sid, status: data.status });
+    } catch (err: any) {
+      res.json({ success: false, error: err.message || "Internal network error contacting Twilio." });
+    }
+  });
+
+
   // Serve frontend assets
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
